@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTFP TITAN // MK-50 | Tactical Masking Suite</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --blue: #00e5ff; --green: #3cf000; --red: #ff0055; --purple: #b026ff; --bg: #050508; --panel: rgba(10, 15, 25, 0.98); }
+        body { margin: 0; background: var(--bg); font-family: 'Segoe UI', sans-serif; color: #fff; overflow: hidden; }
+        #map { height: 100vh; width: 100%; background: #000; cursor: crosshair; }
+
+        .dashboard {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            width: 330px; background: var(--panel); border: 1px solid var(--blue);
+            padding: 22px; border-radius: 4px; box-shadow: 0 10px 50px rgba(0,0,0,1);
+            backdrop-filter: blur(15px); border-left: 6px solid var(--blue);
+        }
+        h1 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 1rem; color: var(--blue); letter-spacing: 2px; }
+        .secure-line { font-family: 'Roboto Mono'; font-size: 0.55rem; color: #444; border-top: 1px solid #222; padding: 10px 0; margin-top: 10px; display: flex; justify-content: space-between; }
+
+        .group { margin-bottom: 12px; }
+        label { font-size: 0.6rem; color: #888; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 5px; }
+        .val { color: var(--green); float: right; font-family: 'Roboto Mono'; font-weight: bold; }
+
+        input[type="number"] { width: 100%; background: #000; border: 1px solid #333; color: var(--green); padding: 8px; font-family: 'Roboto Mono'; box-sizing: border-box; }
+
+        #status-msg { font-family: 'Roboto Mono'; font-size: 0.65rem; color: var(--blue); margin-top: 15px; border-left: 2px solid var(--blue); padding-left: 12px; min-height: 14px; text-transform: uppercase; }
+        #progress-rail { width: 100%; background: #111; height: 3px; margin-top: 10px; border-radius: 2px; overflow: hidden; }
+        #progress-fill { width: 0%; height: 100%; background: var(--blue); box-shadow: 0 0 10px var(--blue); transition: width 0.3s; }
+
+        .legend { margin-top: 15px; font-size: 0.6rem; color: #aaa; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        .leg-item { display: flex; align-items: center; gap: 5px; }
+        .box { width: 10px; height: 10px; border-radius: 2px; }
+
+        #profile-overlay {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 85%; height: 210px; background: rgba(5, 5, 10, 0.98);
+            border: 1px solid var(--blue); border-radius: 12px; padding: 15px; display: none; z-index: 1001;
+        }
+        #three-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 9999; display: none; }
+        .exit-3d { position: absolute; top: 20px; right: 20px; z-index: 10000; background: var(--red); color: white; border: none; padding: 10px 25px; cursor: pointer; font-family: 'Orbitron'; border-radius: 4px;}
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <h1>OTFP TITAN // MK50</h1>
+    <div class="secure-line">
+        <span>MODE: COMBAT MASKING</span>
+        <span>AGL: 1.0M</span>
+    </div>
+    
+    <div class="group">
+        <label>SIGHT ANALYSIS: <span class="val">UHR MASKING HEATMAP</span></label>
+    </div>
+
+    <div class="group">
+        <label>BOUNDARY: <span class="val">10.0 NM TACTICAL BOX</span></label>
+    </div>
+
+    <div class="group">
+        <label>OBS HEIGHT (M AGL)</label>
+        <input type="number" id="obsAltInp" value="1.0" step="0.1">
+    </div>
+
+    <div id="status-msg">READY: DEPLOY SAN DIEGO MATRIX</div>
+    <div id="progress-rail"><div id="progress-fill"></div></div>
+
+    <div class="legend">
+        <div class="leg-item"><div class="box" style="background: var(--green)"></div> Visible</div>
+        <div class="leg-item"><div class="box" style="background: #ffcc00"></div> &lt; 500ft Gap</div>
+        <div class="leg-item"><div class="box" style="background: var(--red)"></div> &lt; 1500ft Gap</div>
+        <div class="leg-item"><div class="box" style="background: var(--purple)"></div> High Mask</div>
+    </div>
+    
+    <button id="v3dBtn" style="display:none; color: var(--green); border-color: var(--green); font-family:'Orbitron'; padding: 12px; margin-top: 15px; background: transparent; border: 1px solid; cursor: pointer;" onclick="toggle3D(true)">Launch 3D Shadow Mesh</button>
+    <button onclick="location.reload()" style="width: 100%; border-color: var(--red); color: var(--red); background: transparent; padding: 8px; margin-top: 15px; cursor: pointer; font-family: 'Orbitron'; font-size: 0.6rem; border: 1px solid;">REBOOT MISSION</button>
+</div>
+
+<div id="profile-overlay">
+    <button onclick="document.getElementById('profile-overlay').style.display='none'" style="position:absolute; top:10px; right:10px; background:red; border:none; color:white; cursor:pointer; padding:5px 10px; z-index: 10;">X</button>
+    <canvas id="pChart"></canvas>
+</div>
+<div id="three-overlay">
+    <button class="exit-3d" onclick="toggle3D(false)">EXIT</button>
+    <div id="three-container" style="width:100%; height:100%"></div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    const R_E = 6371000, NM_M = 1852, K = 1.33, M_TO_FT = 3.28084;
+    const GRID_DIM = 160; 
+
+    let obsPoint = null, obsAltAbs = 0;
+    let virtualDB = { grid: [], radials: [], waterline: [] };
+    let scanLayer = L.layerGroup();
+    let currentChart = null;
+    let isWorking = false;
+
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([32.684, -117.239], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+    scanLayer.addTo(map);
+
+    map.on('click', (e) => {
+        if (isWorking) return;
+        obsPoint = e.latlng;
+        runTITANShadow();
+    });
+
+    async function runTITANShadow() {
+        isWorking = true;
+        scanLayer.clearLayers();
+        virtualDB = { grid: [], radials: [], waterline: [] };
+        setHUD("Calibrating Shadow Matrix...");
+        setProg(2);
+
+        try {
+            const obsData = await fetchElevBulk([{ latitude: obsPoint.lat, longitude: obsPoint.lng }]);
+            obsAltAbs = obsData[0].elevation + parseFloat(document.getElementById('obsAltInp').value);
+
+            const radiusM = 10 * NM_M;
+            const latSpan = radiusM / 111320;
+            const lngSpan = radiusM / (111320 * Math.cos(obsPoint.lat * Math.PI / 180));
+            
+            let gridCoords = [];
+            for (let i = 0; i < GRID_DIM; i++) {
+                for (let j = 0; j < GRID_DIM; j++) {
+                    gridCoords.push({
+                        latitude: (obsPoint.lat + latSpan/2) - (latSpan * (i / (GRID_DIM - 1))),
+                        longitude: (obsPoint.lng - lngSpan/2) + (lngSpan * (j / (GRID_DIM - 1))),
+                        type: 'grid'
+                    });
+                }
+            }
+
+            let radialCoords = [];
+            const rayCount = 180, ptsPerRay = 60;
+            for (let r = 0; r < rayCount; r++) {
+                const brng = r * 2;
+                for (let s = 1; s <= ptsPerRay; s++) {
+                    const dist = (radiusM / ptsPerRay) * s;
+                    const pos = projectLL(obsPoint, brng, dist);
+                    radialCoords.push({ latitude: pos[0], longitude: pos[1], rayIdx: r, dist: dist, bearing: brng, type: 'radial' });
+                }
+            }
+
+            const masterList = gridCoords.concat(radialCoords);
+            setHUD(`Streaming 36,400 Nodes...`);
+            const rawResults = await fetchElevBulk(masterList);
+
+            virtualDB.grid = rawResults.filter(p => p.type === 'grid');
+            virtualDB.radials = rawResults.filter(p => p.type === 'radial');
+
+            setHUD("Calculating Masking Severity...");
+            processShadows(rayCount);
+
+            setHUD("MISSION READY");
+            document.getElementById('v3dBtn').style.display = 'block';
+
+        } catch (err) {
+            setHUD("ERR: DATA OVERLOAD");
+            console.error(err);
+        } finally { isWorking = false; setProg(0); }
+    }
+
+    async function fetchElevBulk(locations) {
+        const CHUNK_SIZE = 1300; 
+        let results = [];
+        for (let i = 0; i < locations.length; i += CHUNK_SIZE) {
+            const chunk = locations.slice(i, i + CHUNK_SIZE);
+            const batchNum = Math.floor(i/CHUNK_SIZE) + 1;
+            setHUD(`POST Batch ${batchNum}/28...`);
+            setProg((batchNum / 28) * 100);
+            const response = await fetch("https://api.open-elevation.com/api/v1/lookup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ locations: chunk })
+            });
+            const data = await response.json();
+            results = results.concat(chunk.map((c, idx) => ({ ...c, elevation: data.results[idx].elevation })));
+            await new Promise(r => setTimeout(r, 100)); 
+        }
+        return results;
+    }
+
+    function processShadows(rayCount) {
+        let shoreline = [];
+        for (let r = 0; r < rayCount; r++) {
+            const ray = virtualDB.radials.filter(p => p.rayIdx === r).sort((a,b) => a.dist - b.dist);
+            let firstIntercept = null;
+            let maxSlope = -Infinity;
+
+            ray.forEach((p, idx) => {
+                const drop = Math.pow(p.dist, 2) / (2 * R_E * K);
+                const pSlope = ((p.elevation - drop) - obsAltAbs) / p.dist;
+
+                let visible = pSlope > maxSlope;
+                if (visible) maxSlope = pSlope;
+
+                const horizonH = obsAltAbs + (maxSlope * p.dist);
+                const groundH = p.elevation - drop;
+                const mdaMeters = Math.max(0, horizonH - groundH);
+                p.mdaFt = mdaMeters * M_TO_FT;
+
+                if (!visible && !firstIntercept) {
+                    firstIntercept = (idx > 0) ? ray[idx-1] : ray[0];
+                }
+
+                if (r % 30 === 0 && idx % 15 === 0) {
+                    let dotColor = '#3cf000';
+                    if (!visible) {
+                        if (p.mdaFt < 500) dotColor = '#ffcc00';
+                        else if (p.mdaFt < 1500) dotColor = '#ff3131';
+                        else dotColor = '#b026ff';
+                    }
+
+                    const dot = L.circleMarker([p.latitude, p.longitude], {
+                        radius: visible ? 2.5 : 1.5,
+                        fillColor: dotColor,
+                        fillOpacity: visible ? 0.9 : 0.4, stroke: false
+                    }).addTo(scanLayer);
+
+                    dot.bindTooltip(`MDA: ${Math.round(p.mdaFt)} FT`, { sticky: true });
+                    dot.on('click', (ev) => {
+                        L.DomEvent.stopPropagation(ev);
+                        renderChart(ray, p, visible);
+                    });
+                }
+            });
+            const vertex = firstIntercept || ray[ray.length-1];
+            shoreline.push([vertex.latitude, vertex.longitude]);
+            virtualDB.waterline.push(vertex); 
+        }
+        L.polygon(shoreline, { color: '#00e5ff', fillColor: '#3cf000', fillOpacity: 0.1, weight: 1.5, dashArray: '5,5', interactive: false }).addTo(scanLayer);
+    }
+
+    function renderChart(rayData, targetNode, isVis) {
+        document.getElementById('profile-overlay').style.display = 'block';
+        const targetDrop = Math.pow(targetNode.dist, 2) / (2 * R_E * K);
+        const chordSlope = ((targetNode.elevation - targetDrop) - obsAltAbs) / targetNode.dist;
+        const labels = [], gndSet = [], losSet = [];
+
+        rayData.forEach(p => {
+            if (p.dist <= targetNode.dist * 1.05) {
+                const drop = Math.pow(p.dist, 2) / (2 * R_E * K);
+                labels.push((p.dist / NM_M).toFixed(1) + "nm");
+                gndSet.push(p.elevation - drop);
+                losSet.push(obsAltAbs + (chordSlope * p.dist));
+            }
+        });
+
+        const ctx = document.getElementById('pChart').getContext('2d');
+        if (currentChart) currentChart.destroy();
+        currentChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Surface', data: gndSet, borderColor: isVis ? '#39ff14' : '#ff3131', fill: true, backgroundColor:'rgba(57,255,20,0.1)', pointRadius: 0 },
+                    { label: 'Sight', data: losSet, borderColor: '#00e5ff', borderDash: [5,5], pointRadius: 0 }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { grid: {color:'#111'}, ticks:{color:'#555'} },
+                    x: { grid: {display:false}, ticks:{color:'#555', font:{size:9}} }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function toggle3D(show) {
+        document.getElementById('three-overlay').style.display = show ? 'block' : 'none';
+        if (show) init3D();
+    }
+
+    function init3D() {
+        const container = document.getElementById('three-container'); container.innerHTML = "";
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 20000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+        const geo = new THREE.PlaneGeometry(500, 500, GRID_DIM - 1, GRID_DIM - 1);
+        const posAttr = geo.attributes.position;
+        const colorAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 3), 3);
+        
+        let minH = 10000;
+        virtualDB.grid.forEach(v => { if (v.elevation < minH) minH = v.elevation; });
+
+        for (let i = 0; i < posAttr.count; i++) {
+            const p = virtualDB.grid[i];
+            posAttr.setZ(i, (p.elevation - minH) / 10);
+            const color = new THREE.Color(p.elevation > obsAltAbs ? 0x444444 : 0x224422);
+            colorAttr.setXYZ(i, color.r, color.g, color.b);
+        }
+        geo.setAttribute('color', colorAttr);
+        geo.computeVertexNormals();
+        
+        const terrain = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ vertexColors: true, wireframe: true, side: THREE.DoubleSide, transparent:true, opacity:0.4 }));
+        terrain.rotation.x = -Math.PI / 2;
+        scene.add(terrain);
+
+        // --- OBSERVER MARKER ("THE EYE") - REDUCED SIZE TO 0.3 ---
+        const userOffset = parseFloat(document.getElementById('obsAltInp').value) || 0;
+        const obsZ = (obsAltAbs - minH) / 10;
+        
+        const obsMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.3), 
+            new THREE.MeshBasicMaterial({color: 0x3cf000})
+        );
+        obsMarker.position.set(0, obsZ, 0);
+        scene.add(obsMarker);
+
+        // --- WATERLINE & VISION RAYS ---
+        const linePts = [];
+        const rayGroup = new THREE.Group();
+        
+        virtualDB.waterline.forEach((p, idx) => {
+            const x = ((p.longitude - obsPoint.lng) / ( (10 * NM_M / (111320 * Math.cos(obsPoint.lat * Math.PI/180))) )) * 500;
+            const y = ((p.latitude - obsPoint.lat) / ( (10 * NM_M / 111320) )) * 500;
+            const zValue = (p.elevation - minH) / 10;
+            
+            const targetVec = new THREE.Vector3(x, zValue, -y);
+            linePts.push(targetVec);
+
+            if (idx % 4 === 0) {
+                const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, obsZ, 0), targetVec]);
+                const ray = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({color: 0x00e5ff, transparent: true, opacity: 0.2}));
+                rayGroup.add(ray);
+            }
+        });
+        
+        scene.add(rayGroup);
+        scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(linePts), new THREE.LineBasicMaterial({color:0x00e5ff, linewidth:3})));
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        camera.position.set(150, 150, 300); camera.lookAt(0,0,0);
+        function anim() { if(document.getElementById('three-overlay').style.display === 'none') return; requestAnimationFrame(anim); renderer.render(scene, camera); }
+        anim();
+    }
+
+    function projectLL(orig, brng, dist) {
+        const p1 = orig.lat*Math.PI/180, l1 = orig.lng*Math.PI/180, θ = brng*Math.PI/180, δ = dist/R_E;
+        const p2 = Math.asin(Math.sin(p1)*Math.cos(δ)+Math.cos(p1)*Math.sin(δ)*Math.cos(θ));
+        const l2 = l1 + Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(p1), Math.cos(δ)-Math.sin(p1)*Math.sin(p2));
+        return [p2*180/Math.PI, l2*180/Math.PI];
+    }
+    function setHUD(m) { document.getElementById('status-msg').innerText = m; }
+    function setProg(v) { document.getElementById('progress-fill').style.width = v + "%"; }
+</script>
+</body>
+</html>
